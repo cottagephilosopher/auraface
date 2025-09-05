@@ -33,11 +33,24 @@ pip install -r requirements.txt
 
 ## Usage
 
-Run the main program:
+### Interactive Mode
+Run the main program for manual control:
 ```bash
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 python main.py
 ```
+
+### Auto Demo Mode
+Run the slideshow demo to see all expressions automatically:
+```bash
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+python demo_slideshow.py
+```
+
+**Demo Controls:**
+- **SPACE** - Pause/Resume slideshow
+- **←/→ Arrows** - Manual expression switching
+- **ESC** - Exit demo
 
 ### Controls
 
@@ -75,8 +88,9 @@ python main.py
 ## File Structure
 
 - `main.py` - Main program with Pygame setup and event handling
-- `animations.py` - Eye drawing and animation frame generation
-- `state_machine.py` - State management and automatic behaviors
+- `demo_slideshow.py` - Automated slideshow demo of all 25 expressions
+- `animations.py` - Advanced eye drawing and animation frame generation with smooth effects
+- `state_machine.py` - State management with smooth transitions and automatic behaviors
 - `requirements.txt` - Python dependencies
 
 ## Features Details
@@ -122,3 +136,25 @@ python main.py
 - **Dynamic Motions**: Trembling, bouncing, nodding, peeking, independent eye movements
 
 All animations run at 60 FPS for maximum smoothness and natural appearance.
+
+## Smooth Animation System
+
+### Advanced Visual Technology
+- **Anti-aliased Drawing**: Smooth ellipses and curves with multi-layer rendering
+- **Bézier Curves**: Mathematical precision for organic shapes like teardrops and hearts
+- **30fps Animation Engine**: High-quality motion with sophisticated timing
+- **12-frame Transitions**: Ultra-smooth expression changes with seamless blending
+
+### Natural Motion Physics
+- **10 Advanced Easing Functions**: Bounce, elastic, anticipation, overshoot effects
+- **Physics-based Animation**: Realistic acceleration, momentum, and natural timing
+- **Emotion-adaptive Timing**: Different expressions use optimal easing curves
+- **Micro-movement System**: Subtle life-like animations even in idle state
+
+### Expression Transition System
+- **Alpha Blending**: Smooth cross-fade between any two expressions
+- **Automatic Transition Detection**: Smart selection of optimal easing functions
+- **Frame Interpolation**: Mathematical blending of animation frames
+- **Seamless State Changes**: No abrupt jumps between emotional states
+
+The system now provides cinema-quality smooth animations that feel natural and alive!

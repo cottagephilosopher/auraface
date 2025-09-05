@@ -52,7 +52,13 @@ class StateMachine:
         self.current_animation = []
         self.animation_frame_index = 0
         self.animation_start_time = time.time()
-        self.frame_duration = 1.0 / 15.0  # 15fps for animations
+        self.frame_duration = 1.0 / 30.0  # 提升到30fps获得更平滑的动画
+        
+        # 平滑过渡系统
+        self.is_transitioning = False
+        self.transition_animation = []
+        self.transition_frame_index = 0
+        self.transition_start_time = 0
         
         # 自动行为控制（在IDLE状态下）
         self.last_auto_blink = time.time()
@@ -98,7 +104,7 @@ class StateMachine:
         self._load_idle_state()
     
     def change_state(self, new_state_name):
-        """改变状态"""
+        """改变状态 - 支持平滑过渡"""
         try:
             # 将字符串转换为枚举
             if isinstance(new_state_name, str):
@@ -110,7 +116,21 @@ class StateMachine:
             if new_state == self.current_state:
                 return
             
-            print(f"State change: {self.current_state.value} -> {new_state.value}")
+            print(f"State change: {self.current_state.value} -> {new_state.value} (with transition)")
+            
+            # 创建平滑过渡动画
+            from_state = self.current_state.value
+            to_state = new_state.value
+            
+            # 启动过渡动画
+            self.transition_animation = self.animation_manager.create_transition_animation(
+                from_state, to_state
+            )
+            
+            if self.transition_animation:
+                self.is_transitioning = True
+                self.transition_frame_index = 0
+                self.transition_start_time = time.time()
             
             # 保存前一个状态
             self.previous_state = self.current_state
@@ -119,8 +139,9 @@ class StateMachine:
             # 重置状态时间
             self.state_start_time = time.time()
             
-            # 加载新状态的动画
-            self._load_state_animation(new_state)
+            # 如果没有过渡动画，直接加载新状态
+            if not self.is_transitioning:
+                self._load_state_animation(new_state)
             
         except ValueError:
             print(f"Warning: Unknown state '{new_state_name}', staying in {self.current_state.value}")
@@ -171,8 +192,22 @@ class StateMachine:
             self.micro_movement_interval = random.uniform(0.5, 2.0)  # 重新设置随机间隔
     
     def update(self):
-        """更新状态机"""
+        """更新状态机 - 支持平滑过渡"""
         current_time = time.time()
+        
+        # 优先处理过渡动画
+        if self.is_transitioning:
+            elapsed = current_time - self.transition_start_time
+            target_frame = int(elapsed / self.frame_duration)
+            
+            if target_frame >= len(self.transition_animation):
+                # 过渡动画完成，切换到目标状态
+                self.is_transitioning = False
+                self._load_state_animation(self.current_state)
+                return
+            else:
+                self.transition_frame_index = min(target_frame, len(self.transition_animation) - 1)
+                return
         
         # 检查是否需要返回IDLE状态
         if self._should_return_to_idle():
@@ -202,7 +237,13 @@ class StateMachine:
                 self.animation_frame_index = min(target_frame, len(self.current_animation) - 1)
     
     def get_current_frame(self):
-        """获取当前应该显示的帧"""
+        """获取当前应该显示的帧 - 支持过渡动画"""
+        # 如果正在过渡，返回过渡帧
+        if self.is_transitioning and self.transition_animation:
+            if 0 <= self.transition_frame_index < len(self.transition_animation):
+                return self.transition_animation[self.transition_frame_index]
+        
+        # 返回正常动画帧
         if self.current_animation and 0 <= self.animation_frame_index < len(self.current_animation):
             return self.current_animation[self.animation_frame_index]
         else:

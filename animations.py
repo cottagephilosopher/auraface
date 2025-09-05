@@ -7,28 +7,106 @@ import pygame
 import math
 import random
 
+# ============================================================================
+# 高级缓动函数系统 - 基于自然物理运动原理
+# ============================================================================
+
 def ease_in(t, start, end):
     """缓入函数 - 慢开始"""
     t = max(0, min(1, t))
-    return start + (end - start) * t * t
+    return start + (end - start) * t * t * t  # 三次方更自然
 
 def ease_out(t, start, end):
     """缓出函数 - 慢结束"""
     t = max(0, min(1, t))
-    return start + (end - start) * (1 - (1 - t) * (1 - t))
+    return start + (end - start) * (1 - pow(1 - t, 3))  # 三次方更自然
 
 def ease_in_out(t, start, end):
     """缓入缓出函数 - 慢开始慢结束"""
     t = max(0, min(1, t))
     if t < 0.5:
-        return start + (end - start) * 2 * t * t
+        return start + (end - start) * 4 * t * t * t
     else:
-        return start + (end - start) * (1 - 2 * (1 - t) * (1 - t))
+        return start + (end - start) * (1 - pow(-2 * t + 2, 3) / 2)
+
+def ease_bounce(t, start, end):
+    """弹跳缓动 - 适用于兴奋、惊讶等表情"""
+    t = max(0, min(1, t))
+    n1, d1 = 7.5625, 2.75
+    
+    if t < 1 / d1:
+        value = n1 * t * t
+    elif t < 2 / d1:
+        t -= 1.5 / d1
+        value = n1 * t * t + 0.75
+    elif t < 2.5 / d1:
+        t -= 2.25 / d1
+        value = n1 * t * t + 0.9375
+    else:
+        t -= 2.625 / d1
+        value = n1 * t * t + 0.984375
+    
+    return start + (end - start) * value
+
+def ease_elastic(t, start, end):
+    """弹性缓动 - 适用于震惊、害怕等表情"""
+    t = max(0, min(1, t))
+    if t == 0 or t == 1:
+        return start if t == 0 else end
+    
+    c4 = (2 * math.pi) / 3
+    value = -pow(2, 10 * t - 10) * math.sin((t * 10 - 10.75) * c4)
+    return start + (end - start) * (1 + value)
+
+def ease_back(t, start, end):
+    """回弹缓动 - 适用于害羞、犹豫等表情"""
+    t = max(0, min(1, t))
+    c1, c3 = 1.70158, 2.70158
+    value = c3 * t * t * t - c1 * t * t
+    return start + (end - start) * value
+
+def ease_anticipation(t, start, end):
+    """预备动作缓动 - 先反向再正向"""
+    t = max(0, min(1, t))
+    if t < 0.2:
+        # 预备阶段：轻微反向
+        anticipation = -0.1 * math.sin(t * math.pi / 0.2)
+        return start + (end - start) * anticipation
+    else:
+        # 主动作阶段：ease_out到目标
+        main_t = (t - 0.2) / 0.8
+        return start + (end - start) * (1 - pow(1 - main_t, 3))
+
+def ease_overshoot(t, start, end):
+    """过冲缓动 - 超过目标再回归"""
+    t = max(0, min(1, t))
+    if t < 0.7:
+        # 快速到达超调位置
+        overshoot_t = t / 0.7
+        return start + (end - start) * (1.15 * (1 - pow(1 - overshoot_t, 3)))
+    else:
+        # 从超调位置回归到目标
+        settle_t = (t - 0.7) / 0.3
+        return start + (end - start) * (1.15 - 0.15 * ease_out(settle_t, 0, 1))
 
 def linear(t, start, end):
     """线性插值函数"""
     t = max(0, min(1, t))
     return start + (end - start) * t
+
+def ease_smooth_step(t, start, end):
+    """平滑步进 - Hermite插值，极其平滑"""
+    t = max(0, min(1, t))
+    # Smoothstep函数：3t² - 2t³
+    smooth_t = t * t * (3.0 - 2.0 * t)
+    return start + (end - start) * smooth_t
+
+def ease_smoother_step(t, start, end):
+    """更平滑步进 - Ken Perlin的改进版本"""
+    t = max(0, min(1, t))
+    # Smootherstep函数：6t⁵ - 15t⁴ + 10t³
+    smoother_t = t * t * t * (t * (t * 6 - 15) + 10)
+    return start + (end - start) * smoother_t
 
 class AnimationManager:
     def __init__(self, screen_width, screen_height):
@@ -40,6 +118,18 @@ class AnimationManager:
         self.BLACK = (0, 0, 0)
         self.WHITE = (255, 255, 255)
         self.GRAY = (128, 128, 128)
+        self.LIGHT_GRAY = (200, 200, 200)
+        
+        # 平滑度和抗锯齿设置
+        self.ANTI_ALIAS = True
+        self.SMOOTH_STEPS = 8  # 贝塞尔曲线精度
+        self.BLEND_ALPHA = 180  # 半透明混合
+        
+        # 表情过渡系统 - 增加过渡帧数获得更平滑效果
+        self.transition_frames = 12  # 表情切换过渡帧数（增加到12帧）
+        self.current_expression = None
+        self.target_expression = None
+        self.transition_progress = 0.0
         
         # 眼睛基础参数
         self.eye_width = 80
@@ -61,39 +151,301 @@ class AnimationManager:
         self.animations = {}
         self._generate_all_animations()
     
+    # ============================================================================
+    # 表情过渡系统 - 实现自然的表情切换
+    # ============================================================================
+    
+    def create_transition_animation(self, from_expression, to_expression):
+        """创建两个表情之间的平滑过渡动画"""
+        if from_expression == to_expression:
+            return self.animations.get(to_expression, [])
+        
+        from_frames = self.animations.get(from_expression, [])
+        to_frames = self.animations.get(to_expression, [])
+        
+        if not from_frames or not to_frames:
+            return to_frames
+        
+        # 选择代表性帧进行混合
+        from_frame = from_frames[-1] if from_frames else self._generate_idle_frame()
+        to_frame = to_frames[0] if to_frames else self._generate_idle_frame()
+        
+        # 生成过渡帧 - 使用更平滑的缓动
+        transition_frames = []
+        for i in range(self.transition_frames):
+            t = ease_smoother_step(i / (self.transition_frames - 1), 0, 1)
+            blended_frame = self._blend_frames(from_frame, to_frame, t)
+            transition_frames.append(blended_frame)
+        
+        return transition_frames
+    
+    def _blend_frames(self, frame1, frame2, blend_ratio):
+        """混合两个动画帧"""
+        if not frame1 or not frame2:
+            return frame2 if frame2 else frame1
+        
+        # 创建混合帧
+        blended_surface = self._create_surface()
+        
+        # 创建临时surface用于alpha混合
+        temp1 = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+        temp2 = pygame.Surface((self.screen_width, self.screen_height), pygame.SRCALPHA)
+        
+        # 复制帧内容
+        temp1.blit(frame1, (0, 0))
+        temp2.blit(frame2, (0, 0))
+        
+        # 设置透明度进行混合
+        alpha1 = int(255 * (1 - blend_ratio))
+        alpha2 = int(255 * blend_ratio)
+        
+        temp1.set_alpha(alpha1)
+        temp2.set_alpha(alpha2)
+        
+        # 混合绘制
+        blended_surface.blit(temp1, (0, 0))
+        blended_surface.blit(temp2, (0, 0))
+        
+        return blended_surface
+    
+    def get_emotion_intensity(self, expression_name):
+        """获取表情的强度级别，用于确定动画参数"""
+        intensity_map = {
+            'idle': 0.0,
+            'happy': 0.6,
+            'blink': 0.3,
+            'surprised': 0.9,
+            'confused': 0.4,
+            'wink': 0.5,
+            'look_left': 0.3,
+            'look_right': 0.3,
+            'look_up': 0.3,
+            'look_down': 0.3,
+            # 创意表情
+            'joy': 1.0,
+            'thinking': 0.5,
+            'angry': 0.8,
+            'sleepy': 0.2,
+            'surprised_mouth': 0.9,
+            # 高级表情
+            'sadness': 0.7,
+            'furious': 1.0,
+            'shy': 0.4,
+            'mischievous': 0.6,
+            'bored': 0.1,
+            'excited': 0.9,
+            'fear': 0.8,
+            'focused': 0.3,
+            'puzzled': 0.6,
+            'triumphant': 0.8
+        }
+        return intensity_map.get(expression_name, 0.5)
+    
+    def get_optimal_easing_function(self, expression_name):
+        """为表情选择最适合的缓动函数"""
+        easing_map = {
+            'happy': ease_smooth_step,
+            'surprised': ease_bounce,
+            'excited': ease_bounce,
+            'fear': ease_elastic,
+            'furious': ease_elastic,
+            'shy': ease_back,
+            'mischievous': ease_back,
+            'triumphant': ease_overshoot,
+            'joy': ease_bounce,
+            'thinking': ease_smoother_step,
+            'focused': ease_smoother_step,
+            'sleepy': ease_in,
+            'bored': ease_in,
+            'sadness': ease_out,
+            'puzzled': ease_in_out
+        }
+        return easing_map.get(expression_name, ease_smooth_step)
+    
     def _create_surface(self):
         """创建新的透明Surface"""
         surface = pygame.Surface((self.screen_width, self.screen_height))
         surface.fill(self.BLACK)
         return surface
+
+    # ============================================================================
+    # 高级平滑绘制函数系统
+    # ============================================================================
+    
+    def _draw_smooth_ellipse(self, surface, center, width, height, color=None, alpha=255):
+        """绘制抗锯齿椭圆"""
+        if color is None:
+            color = self.WHITE
+            
+        # 创建临时surface用于抗锯齿
+        temp_surface = pygame.Surface((width + 4, height + 4), pygame.SRCALPHA)
+        
+        # 多层绘制实现抗锯齿效果
+        for i in range(3):
+            alpha_layer = alpha // (i + 1)
+            size_offset = i * 0.5
+            pygame.draw.ellipse(temp_surface, (*color, alpha_layer),
+                              (2 - size_offset, 2 - size_offset, 
+                               width + size_offset * 2, height + size_offset * 2))
+        
+        # 绘制到主surface
+        surface.blit(temp_surface, (center[0] - width//2 - 2, center[1] - height//2 - 2))
+    
+    def _draw_bezier_curve(self, surface, points, color=None, width=3):
+        """绘制平滑的贝塞尔曲线"""
+        if color is None:
+            color = self.WHITE
+        if len(points) < 3:
+            return
+            
+        # 生成贝塞尔曲线上的点
+        curve_points = []
+        steps = self.SMOOTH_STEPS * len(points)
+        
+        for i in range(steps + 1):
+            t = i / steps
+            point = self._calculate_bezier_point(points, t)
+            curve_points.append(point)
+        
+        # 绘制平滑曲线
+        if len(curve_points) > 1:
+            for i in range(len(curve_points) - 1):
+                # 使用多条细线实现平滑效果
+                pygame.draw.line(surface, color, curve_points[i], curve_points[i + 1], width)
+    
+    def _calculate_bezier_point(self, points, t):
+        """计算贝塞尔曲线上的点"""
+        n = len(points) - 1
+        x, y = 0, 0
+        
+        for i in range(n + 1):
+            # 二项式系数
+            binomial = math.comb(n, i)
+            # 伯恩斯坦基函数
+            bernstein = binomial * (1 - t) ** (n - i) * t ** i
+            
+            x += bernstein * points[i][0]
+            y += bernstein * points[i][1]
+        
+        return (int(x), int(y))
+    
+    def _draw_smooth_teardrop(self, surface, position, size=8, color=None):
+        """绘制平滑水滴形状"""
+        if color is None:
+            color = self.WHITE
+            
+        x, y = position
+        
+        # 贝塞尔曲线控制点定义水滴形状
+        control_points = [
+            (x, y),                           # 顶点
+            (x - size//3, y + size//4),       # 左控制点
+            (x - size//2, y + size//2),       # 左下
+            (x, y + size),                    # 底部中心
+            (x + size//2, y + size//2),       # 右下
+            (x + size//3, y + size//4),       # 右控制点
+            (x, y)                            # 回到顶点
+        ]
+        
+        # 绘制平滑的水滴形状
+        self._draw_bezier_curve(surface, control_points, color, 2)
+        
+        # 填充内部
+        pygame.draw.circle(surface, color, (x, y + size//3), size//3)
+    
+    def _draw_smooth_heart(self, surface, position, size=16, color=None):
+        """绘制平滑心形"""
+        if color is None:
+            color = self.WHITE
+            
+        x, y = position
+        
+        # 心形的贝塞尔曲线控制点
+        control_points = [
+            (x, y + size//4),                 # 中心点
+            (x - size//2, y - size//4),       # 左上
+            (x - size//2, y + size//8),       # 左中
+            (x, y + size//2),                 # 底部
+            (x + size//2, y + size//8),       # 右中
+            (x + size//2, y - size//4),       # 右上
+            (x, y + size//4)                  # 回到中心
+        ]
+        
+        self._draw_bezier_curve(surface, control_points, color, 3)
+    
+    def _draw_smooth_lightning(self, surface):
+        """绘制平滑闪电效果"""
+        # 使用曲线替代尖锐的锯齿
+        center_x, center_y = self.screen_width // 2, self.screen_height // 2
+        
+        # 多条平滑的能量束
+        for i in range(3):
+            offset_x = random.randint(-40, 40)
+            offset_y = random.randint(-30, 30)
+            
+            start_pos = (center_x + offset_x - 60, center_y + offset_y - 40)
+            end_pos = (center_x + offset_x + 60, center_y + offset_y + 40)
+            
+            # 创建波浪形的能量束控制点
+            mid_points = [
+                start_pos,
+                (start_pos[0] + 20, start_pos[1] + random.randint(-15, 15)),
+                (start_pos[0] + 40, start_pos[1] + random.randint(-15, 15)),
+                (end_pos[0] - 20, end_pos[1] + random.randint(-15, 15)),
+                end_pos
+            ]
+            
+            self._draw_bezier_curve(surface, mid_points, self.WHITE, 2)
+    
+    def _draw_rounded_rectangle(self, surface, rect, radius, color=None):
+        """绘制圆角矩形"""
+        if color is None:
+            color = self.WHITE
+            
+        x, y, w, h = rect
+        
+        # 使用平滑椭圆绘制圆角
+        self._draw_smooth_ellipse(surface, (x + radius, y + radius), radius*2, radius*2, color)
+        self._draw_smooth_ellipse(surface, (x + w - radius, y + radius), radius*2, radius*2, color)
+        self._draw_smooth_ellipse(surface, (x + radius, y + h - radius), radius*2, radius*2, color)
+        self._draw_smooth_ellipse(surface, (x + w - radius, y + h - radius), radius*2, radius*2, color)
+        
+        # 绘制矩形部分
+        pygame.draw.rect(surface, color, (x + radius, y, w - 2 * radius, h))
+        pygame.draw.rect(surface, color, (x, y + radius, w, h - 2 * radius))
     
     def _draw_eye(self, surface, center, width, height, offset=(0, 0), scale=1.0):
-        """绘制单个眼睛"""
+        """绘制单个眼睛 - 使用平滑绘制"""
         adjusted_center = (center[0] + offset[0], center[1] + offset[1])
         adjusted_width = int(width * scale)
         adjusted_height = int(height * scale)
         
-        pygame.draw.ellipse(surface, self.WHITE, 
-                          (adjusted_center[0] - adjusted_width//2,
-                           adjusted_center[1] - adjusted_height//2,
-                           adjusted_width, adjusted_height))
+        # 使用平滑椭圆替代原始椭圆
+        self._draw_smooth_ellipse(surface, adjusted_center, adjusted_width, adjusted_height)
     
     def _draw_eyes_as_arcs(self, surface, y_offset=0, arc_height=30):
         """绘制弧形眼睛（开心状态）"""
         left_center = (self.left_eye_center[0], self.left_eye_center[1] + y_offset)
         right_center = (self.right_eye_center[0], self.right_eye_center[1] + y_offset)
         
-        # 绘制弯月形状
-        pygame.draw.arc(surface, self.WHITE,
-                       (left_center[0] - self.eye_width//2,
-                        left_center[1] - arc_height//2,
-                        self.eye_width, arc_height),
-                       0, math.pi, 3)
-        pygame.draw.arc(surface, self.WHITE,
-                       (right_center[0] - self.eye_width//2,
-                        right_center[1] - arc_height//2,
-                        self.eye_width, arc_height),
-                       0, math.pi, 3)
+        # 绘制弯月形状 - 使用贝塞尔曲线
+        # 左眼弧线
+        left_points = [
+            (left_center[0] - self.eye_width//2, left_center[1]),
+            (left_center[0] - self.eye_width//4, left_center[1] - arc_height//2),
+            (left_center[0] + self.eye_width//4, left_center[1] - arc_height//2),
+            (left_center[0] + self.eye_width//2, left_center[1])
+        ]
+        self._draw_bezier_curve(surface, left_points, self.WHITE, 3)
+        
+        # 右眼弧线
+        right_points = [
+            (right_center[0] - self.eye_width//2, right_center[1]),
+            (right_center[0] - self.eye_width//4, right_center[1] - arc_height//2),
+            (right_center[0] + self.eye_width//4, right_center[1] - arc_height//2),
+            (right_center[0] + self.eye_width//2, right_center[1])
+        ]
+        self._draw_bezier_curve(surface, right_points, self.WHITE, 3)
     
     def _draw_sparkles_at_eye_corners(self, surface):
         """在眼角绘制闪烁效果"""
@@ -130,47 +482,15 @@ class AnimationManager:
     
     def _draw_lightning_bolts(self, surface):
         """绘制闪电符号（愤怒效果）"""
-        # 左侧闪电
-        left_bolt_x = self.left_eye_center[0] - 20
-        left_bolt_y = self.left_eye_center[1] - 60
-        lightning_points = [
-            (left_bolt_x, left_bolt_y),
-            (left_bolt_x + 8, left_bolt_y + 12),
-            (left_bolt_x + 3, left_bolt_y + 12),
-            (left_bolt_x + 10, left_bolt_y + 25)
-        ]
-        pygame.draw.lines(surface, self.WHITE, False, lightning_points, 3)
-        
-        # 右侧闪电
-        right_bolt_x = self.right_eye_center[0] + 20
-        right_bolt_y = self.right_eye_center[1] - 55
-        lightning_points = [
-            (right_bolt_x, right_bolt_y),
-            (right_bolt_x - 8, right_bolt_y + 15),
-            (right_bolt_x - 3, right_bolt_y + 15),
-            (right_bolt_x - 10, right_bolt_y + 28)
-        ]
-        pygame.draw.lines(surface, self.WHITE, False, lightning_points, 3)
+        self._draw_smooth_lightning(surface)
     
     def _draw_teardrop(self, surface, position, size=8):
         """绘制泪滴（悲伤效果）"""
-        x, y = position
-        # 绘制泪滴形状：圆形+三角形
-        pygame.draw.circle(surface, self.WHITE, (x, y + size//2), size//2)
-        # 小三角形顶部
-        points = [(x, y), (x - size//3, y + size//2), (x + size//3, y + size//2)]
-        pygame.draw.polygon(surface, self.WHITE, points)
+        self._draw_smooth_teardrop(surface, position, size)
     
     def _draw_heart(self, surface, position, size=16):
         """绘制心形图标（兴奋效果）"""
-        x, y = position
-        # 简化的心形：两个圆+三角形
-        radius = size // 4
-        pygame.draw.circle(surface, self.WHITE, (x - radius//2, y), radius)
-        pygame.draw.circle(surface, self.WHITE, (x + radius//2, y), radius)
-        # 下方三角形
-        points = [(x - radius, y + radius//2), (x + radius, y + radius//2), (x, y + size)]
-        pygame.draw.polygon(surface, self.WHITE, points)
+        self._draw_smooth_heart(surface, position, size)
     
     def _draw_crown(self, surface, position, size=20):
         """绘制皇冠图标（胜利效果）"""
@@ -196,7 +516,7 @@ class AnimationManager:
         # 奖杯杯身
         cup_width = size // 2
         cup_height = size // 2
-        pygame.draw.ellipse(surface, self.WHITE, (x - cup_width//2, y, cup_width, cup_height))
+        self._draw_smooth_ellipse(surface, (x, y + cup_height//2), cup_width, cup_height, self.WHITE)
         
         # 奖杯把手
         pygame.draw.arc(surface, self.WHITE, (x - size//2, y + size//4, size//3, size//3), 
@@ -213,15 +533,13 @@ class AnimationManager:
         # 手掌基本形状：椭圆形
         hand_width = int(size * (1 - openness * 0.3))
         hand_height = int(size * 1.2)
-        pygame.draw.ellipse(surface, self.WHITE, 
-                          (x - hand_width//2, y - hand_height//2, hand_width, hand_height))
+        self._draw_smooth_ellipse(surface, (x, y), hand_width, hand_height, self.WHITE)
         
         # 如果有开口，在中间画个小缝隙
         if openness > 0.3:
             gap_width = int(size * openness * 0.4)
             gap_height = int(size * 0.8)
-            pygame.draw.ellipse(surface, self.BLACK,
-                              (x - gap_width//2, y - gap_height//2, gap_width, gap_height))
+            self._draw_smooth_ellipse(surface, (x, y), gap_width, gap_height, self.BLACK)
     
     def _draw_star_sparkle(self, surface, position, size=8):
         """绘制星星闪烁效果（恶作剧效果）"""
@@ -301,12 +619,14 @@ class AnimationManager:
         # 绘制弯月形状（使用两个圆形来创造弯月效果）
         arc_height = int(height * intensity * 0.3)
         
-        # 上弧
-        pygame.draw.arc(surface, self.WHITE,
-                       (adjusted_center[0] - width//2,
-                        adjusted_center[1] - arc_height//2,
-                        width, arc_height),
-                       0, math.pi, 3)
+        # 上弧 - 使用贝塞尔曲线创建平滑弯月形状
+        points = [
+            (adjusted_center[0] - width//2, adjusted_center[1]),
+            (adjusted_center[0] - width//4, adjusted_center[1] - arc_height//2),
+            (adjusted_center[0] + width//4, adjusted_center[1] - arc_height//2),
+            (adjusted_center[0] + width//2, adjusted_center[1])
+        ]
+        self._draw_bezier_curve(surface, points, self.WHITE, 3)
     
     def _draw_surprised_eye(self, surface, center, width, height, offset=(0, 0), scale=1.5):
         """绘制惊讶的大眼睛"""
@@ -314,28 +634,21 @@ class AnimationManager:
         adjusted_width = int(width * scale)
         adjusted_height = int(height * scale)
         
-        # 外圈
-        pygame.draw.ellipse(surface, self.WHITE,
-                          (adjusted_center[0] - adjusted_width//2,
-                           adjusted_center[1] - adjusted_height//2,
-                           adjusted_width, adjusted_height), 2)
+        # 外圈 - 使用平滑椭圆，边框效果
+        # 绘制外圈边框（通过绘制两个椭圆实现边框效果）
+        self._draw_smooth_ellipse(surface, adjusted_center, adjusted_width, adjusted_height, self.WHITE)
+        self._draw_smooth_ellipse(surface, adjusted_center, adjusted_width-4, adjusted_height-4, self.BLACK)
         
         # 内圈（瞳孔）
         pupil_size = int(min(adjusted_width, adjusted_height) * 0.3)
-        pygame.draw.ellipse(surface, self.WHITE,
-                          (adjusted_center[0] - pupil_size//2,
-                           adjusted_center[1] - pupil_size//2,
-                           pupil_size, pupil_size))
+        self._draw_smooth_ellipse(surface, adjusted_center, pupil_size, pupil_size, self.WHITE)
     
     def _draw_angry_eye(self, surface, center, width, height, offset=(0, 0)):
         """绘制生气的眼睛（带眉毛）"""
         adjusted_center = (center[0] + offset[0], center[1] + offset[1])
         
         # 绘制普通眼睛
-        pygame.draw.ellipse(surface, self.WHITE,
-                          (adjusted_center[0] - width//2,
-                           adjusted_center[1] - height//2,
-                           width, height))
+        self._draw_smooth_ellipse(surface, adjusted_center, width, height, self.WHITE)
         
         # 绘制倾斜的眉毛（直线版本）
         eyebrow_y = adjusted_center[1] - height//2 - 15
@@ -343,13 +656,21 @@ class AnimationManager:
         
         # 左眼眉（向左下倾斜）
         if center[0] < self.screen_width // 2:  # 左眼
-            pygame.draw.line(surface, self.WHITE,
-                           (adjusted_center[0] - eyebrow_width//2, eyebrow_y - 5),
-                           (adjusted_center[0] + eyebrow_width//2, eyebrow_y + 5), 4)
+            points = [
+                (adjusted_center[0] - eyebrow_width//2, eyebrow_y - 5),
+                (adjusted_center[0] - eyebrow_width//4, eyebrow_y - 2),
+                (adjusted_center[0] + eyebrow_width//4, eyebrow_y + 2),
+                (adjusted_center[0] + eyebrow_width//2, eyebrow_y + 5)
+            ]
+            self._draw_bezier_curve(surface, points, self.WHITE, 4)
         else:  # 右眼
-            pygame.draw.line(surface, self.WHITE,
-                           (adjusted_center[0] - eyebrow_width//2, eyebrow_y + 5),
-                           (adjusted_center[0] + eyebrow_width//2, eyebrow_y - 5), 4)
+            points = [
+                (adjusted_center[0] - eyebrow_width//2, eyebrow_y + 5),
+                (adjusted_center[0] - eyebrow_width//4, eyebrow_y + 2),
+                (adjusted_center[0] + eyebrow_width//4, eyebrow_y - 2),
+                (adjusted_center[0] + eyebrow_width//2, eyebrow_y - 5)
+            ]
+            self._draw_bezier_curve(surface, points, self.WHITE, 4)
     
     def _draw_sleepy_eye(self, surface, center, width, height, offset=(0, 0), openness=0.3):
         """绘制睡意的半闭眼睛"""
@@ -357,22 +678,21 @@ class AnimationManager:
         
         # 绘制半闭的眼睛
         sleepy_height = int(height * openness)
-        pygame.draw.ellipse(surface, self.WHITE,
-                          (adjusted_center[0] - width//2,
-                           adjusted_center[1] - sleepy_height//2,
-                           width, sleepy_height))
+        self._draw_smooth_ellipse(surface, adjusted_center, width, sleepy_height, self.WHITE)
     
     def _draw_sad_eye(self, surface, center, width, height, offset=(0, 0)):
         """绘制悲伤的下垂眼睛"""
         adjusted_center = (center[0] + offset[0], center[1] + offset[1])
         
-        # 绘制下垂的弧形眼睛
+        # 绘制下垂的弧形眼睛 - 使用贝塞尔曲线
         arc_height = height // 2
-        pygame.draw.arc(surface, self.WHITE,
-                       (adjusted_center[0] - width//2,
-                        adjusted_center[1] + height//4,  # 向下偏移
-                        width, arc_height),
-                       0, math.pi, 3)
+        points = [
+            (adjusted_center[0] - width//2, adjusted_center[1] + height//4),
+            (adjusted_center[0] - width//4, adjusted_center[1] + height//4 + arc_height//2),
+            (adjusted_center[0] + width//4, adjusted_center[1] + height//4 + arc_height//2),
+            (adjusted_center[0] + width//2, adjusted_center[1] + height//4)
+        ]
+        self._draw_bezier_curve(surface, points, self.WHITE, 3)
     
     def _draw_furious_eye(self, surface, center, width, height, offset=(0, 0)):
         """绘制狂怒的倒三角眼睛"""
@@ -394,19 +714,15 @@ class AnimationManager:
         fear_width = int(width * 1.3)
         fear_height = int(height * 0.8)
         
-        # 外圈
-        pygame.draw.ellipse(surface, self.WHITE,
-                          (adjusted_center[0] - fear_width//2,
-                           adjusted_center[1] - fear_height//2,
-                           fear_width, fear_height), 2)
+        # 外圈 - 使用边框效果的平滑椭圆
+        self._draw_smooth_ellipse(surface, adjusted_center, fear_width, fear_height, self.WHITE)
+        self._draw_smooth_ellipse(surface, adjusted_center, fear_width-4, fear_height-4, self.BLACK)
         
         # 小瞳孔（向内聚拢）
         pupil_size = max(8, int(min(fear_width, fear_height) * 0.2))
         pupil_offset_x = 8 if center[0] < self.screen_width // 2 else -8  # 向内聚拢
-        pygame.draw.ellipse(surface, self.WHITE,
-                          (adjusted_center[0] - pupil_size//2 + pupil_offset_x,
-                           adjusted_center[1] - pupil_size//2,
-                           pupil_size, pupil_size))
+        pupil_center = (adjusted_center[0] + pupil_offset_x, adjusted_center[1])
+        self._draw_smooth_ellipse(surface, pupil_center, pupil_size, pupil_size, self.WHITE)
     
     def _draw_bored_eye(self, surface, center, width, height, openness=0.3, offset=(0, 0)):
         """绘制无聊的半闭眼睛（类似瞌睡但更平）"""
@@ -414,10 +730,7 @@ class AnimationManager:
         
         # 绘制扁平的眼睛
         bored_height = int(height * openness)
-        pygame.draw.ellipse(surface, self.WHITE,
-                          (adjusted_center[0] - width//2,
-                           adjusted_center[1] - bored_height//2,
-                           width, bored_height))
+        self._draw_smooth_ellipse(surface, adjusted_center, width, bored_height, self.WHITE)
     
     def _draw_excited_eye(self, surface, center, width, height, bounce_offset=(0, 0)):
         """绘制兴奋的跳动眼睛"""
@@ -426,10 +739,7 @@ class AnimationManager:
         # 绘制稍微放大的圆形眼睛
         excited_width = int(width * 1.1)
         excited_height = int(height * 1.1)
-        pygame.draw.ellipse(surface, self.WHITE,
-                          (adjusted_center[0] - excited_width//2,
-                           adjusted_center[1] - excited_height//2,
-                           excited_width, excited_height))
+        self._draw_smooth_ellipse(surface, adjusted_center, excited_width, excited_height, self.WHITE)
     
     def _draw_mouth(self, surface, mouth_type="neutral", intensity=1.0):
         """绘制嘴巴"""
@@ -438,35 +748,43 @@ class AnimationManager:
         height = self.mouth_height
         
         if mouth_type == "smile":
-            # 微笑弧度
+            # 微笑弧度 - 使用贝塞尔曲线
             arc_height = int(height * intensity * 0.8)
-            pygame.draw.arc(surface, self.WHITE,
-                          (center[0] - width//2, center[1] - arc_height//2,
-                           width, arc_height),
-                          0, math.pi, 3)
+            points = [
+                (center[0] - width//2, center[1]),
+                (center[0] - width//4, center[1] - arc_height//2),
+                (center[0] + width//4, center[1] - arc_height//2),
+                (center[0] + width//2, center[1])
+            ]
+            self._draw_bezier_curve(surface, points, self.WHITE, 3)
         
         elif mouth_type == "big_smile":
-            # 大笑（更大的弧度）
+            # 大笑（更大的弧度）- 使用贝塞尔曲线
             arc_height = int(height * intensity)
-            pygame.draw.arc(surface, self.WHITE,
-                          (center[0] - width//2, center[1] - arc_height//2,
-                           width, arc_height),
-                          0, math.pi, 5)
+            points = [
+                (center[0] - width//2, center[1]),
+                (center[0] - width//4, center[1] - arc_height//2),
+                (center[0] + width//4, center[1] - arc_height//2),
+                (center[0] + width//2, center[1])
+            ]
+            self._draw_bezier_curve(surface, points, self.WHITE, 5)
         
         elif mouth_type == "frown":
-            # 不高兴（向下的弧度）
+            # 不高兴（向下的弧度）- 使用贝塞尔曲线
             arc_height = int(height * intensity * 0.6)
-            pygame.draw.arc(surface, self.WHITE,
-                          (center[0] - width//2, center[1] + arc_height//2,
-                           width, arc_height),
-                          math.pi, 2 * math.pi, 3)
+            points = [
+                (center[0] - width//2, center[1]),
+                (center[0] - width//4, center[1] + arc_height//2),
+                (center[0] + width//4, center[1] + arc_height//2),
+                (center[0] + width//2, center[1])
+            ]
+            self._draw_bezier_curve(surface, points, self.WHITE, 3)
         
         elif mouth_type == "surprised":
-            # 惊讶（小圆形）
+            # 惊讶（小圆形）- 使用平滑椭圆边框效果
             mouth_radius = int(width * 0.15 * intensity)
-            pygame.draw.ellipse(surface, self.WHITE,
-                              (center[0] - mouth_radius, center[1] - mouth_radius,
-                               mouth_radius * 2, mouth_radius * 2), 2)
+            self._draw_smooth_ellipse(surface, center, mouth_radius * 2, mouth_radius * 2, self.WHITE)
+            self._draw_smooth_ellipse(surface, center, mouth_radius * 2 - 4, mouth_radius * 2 - 4, self.BLACK)
         
         elif mouth_type == "wavy":
             # 波浪形（困惑）
@@ -638,9 +956,9 @@ class AnimationManager:
                 self._draw_mouth(surface, "surprised", intensity=1.0)
                 
             elif 6 <= i <= 10:
-                # 帧6-10: 快速恢复到默认状态
+                # 帧6-10: 平滑恢复到默认状态
                 t = (i - 6) / 4.0  # 0.0 到 1.0
-                current_scale = linear(t, eye_radius_max, 1.0)
+                current_scale = ease_smooth_step(t, eye_radius_max, 1.0)
                 
                 if t < 1.0:
                     # 眼睛快速收缩
@@ -1295,17 +1613,25 @@ class AnimationManager:
             self._draw_mouth(surface, "surprised", intensity=0.6)
             self.mouth_center = original_center
             
-            # 在眼睛周围绘制收缩线条（恐惧效果）
+            # 在眼睛周围绘制收缩线条（恐惧效果）- 使用平滑曲线
             if i % 4 < 2:
-                for angle in [0, math.pi/4, math.pi/2, 3*math.pi/4]:
+                for angle in [0, math.pi/4, math.pi/2, 3*math.pi/4, math.pi, 5*math.pi/4, 3*math.pi/2, 7*math.pi/4]:
                     for eye_center in [self.left_eye_center, self.right_eye_center]:
                         start_radius = 55
                         end_radius = 45
+                        mid_radius = 50
+                        
+                        # 创建曲线控制点
                         start_x = eye_center[0] + math.cos(angle) * start_radius + tremor_x
                         start_y = eye_center[1] + math.sin(angle) * start_radius + tremor_y
+                        mid_x = eye_center[0] + math.cos(angle) * mid_radius + tremor_x
+                        mid_y = eye_center[1] + math.sin(angle) * mid_radius + tremor_y
                         end_x = eye_center[0] + math.cos(angle) * end_radius + tremor_x
                         end_y = eye_center[1] + math.sin(angle) * end_radius + tremor_y
-                        pygame.draw.line(surface, self.WHITE, (start_x, start_y), (end_x, end_y), 1)
+                        
+                        # 绘制平滑的恐慌线条
+                        panic_points = [(start_x, start_y), (mid_x, mid_y), (end_x, end_y)]
+                        self._draw_bezier_curve(surface, panic_points, width=1)
             
             frames.append(surface)
         
