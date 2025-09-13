@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 const readline = require('readline');
 
-const PORT = 8080;
+const PORT = 10808;
 let clients = new Set();
 
 const server = new WebSocket.Server({ port: PORT });

@@ -75,7 +75,7 @@
         const statusElement = document.getElementById('status');
 
         function connectWebSocket() {
-            websocket = new WebSocket('ws://localhost:8080');
+            websocket = new WebSocket('ws://localhost:10808');
             
             websocket.onopen = function(event) {
                 console.log('WebSocket连接成功');
