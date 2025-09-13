@@ -1,0 +1,16 @@
+{
+  "name": "emotion-display-test",
+  "version": "1.0.0",
+  "description": "WebSocket test server for emotion display page",
+  "main": "test-server.js",
+  "scripts": {
+    "start": "node test-server.js",
+    "test": "node test-server.js"
+  },
+  "dependencies": {
+    "ws": "^8.14.2"
+  },
+  "keywords": ["websocket", "emotion", "test"],
+  "author": "",
+  "license": "MIT"
+}

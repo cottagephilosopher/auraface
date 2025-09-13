@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>表情展示页面</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #000000;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        .emotion-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #000000;
+        }
+
+        #emotionImg {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            opacity: 1;
+            transition: opacity 1s ease-in-out;
+        }
+
+        .status {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            border-radius: 5px;
+            color: white;
+            font-size: 14px;
+        }
+
+        .connected {
+            background-color: #4CAF50;
+        }
+
+        .disconnected {
+            background-color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <div class="emotion-container">
+        <img id="emotionImg" src="images/blink_1.png" alt="当前表情">
+    </div>
+    <div id="status" class="status disconnected">未连接</div>
+
+    <script>
+        const emotionMap = {
+            'blink': 'blink',
+            'roar': 'roar'
+        };
+
+        let currentAnimation = null;
+        let pauseTimeout = null;
+        let currentEmotion = null;
+
+        let websocket;
+        const emotionImg = document.getElementById('emotionImg');
+        const statusElement = document.getElementById('status');
+
+        function connectWebSocket() {
+            websocket = new WebSocket('ws://localhost:8080');
+            
+            websocket.onopen = function(event) {
+                console.log('WebSocket连接成功');
+                statusElement.textContent = '已连接';
+                statusElement.className = 'status connected';
+            };
+
+            websocket.onmessage = function(event) {
+                const emotion = event.data.trim();
+                console.log('接收到表情信号:', emotion);
+                
+                if (emotionMap[emotion]) {
+                    playEmotionAnimation(emotionMap[emotion]);
+                } else {
+                    console.warn('未知的表情类型:', emotion);
+                }
+            };
+
+            websocket.onerror = function(error) {
+                console.error('WebSocket连接错误:', error);
+                statusElement.textContent = '连接错误';
+                statusElement.className = 'status disconnected';
+            };
+
+            websocket.onclose = function(event) {
+                console.log('WebSocket连接关闭');
+                statusElement.textContent = '连接关闭';
+                statusElement.className = 'status disconnected';
+                
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        function playEmotionAnimation(emotionName) {
+            if (currentAnimation) {
+                clearInterval(currentAnimation);
+                currentAnimation = null;
+            }
+            if (pauseTimeout) {
+                clearTimeout(pauseTimeout);
+                pauseTimeout = null;
+            }
+
+            if (currentEmotion && currentEmotion !== emotionName) {
+                emotionImg.style.opacity = '0';
+                setTimeout(() => {
+                    startAnimation(emotionName);
+                    setTimeout(() => {
+                        emotionImg.style.opacity = '1';
+                    }, 50);
+                }, 1000);
+            } else {
+                startAnimation(emotionName);
+            }
+        }
+
+        function startAnimation(emotionName) {
+            currentEmotion = emotionName;
+            
+            let frameIndex = 1;
+            const maxFrames = 15;
+            
+            function nextFrame() {
+                const imagePath = `images/${emotionName}_${frameIndex}.png`;
+                emotionImg.src = imagePath;
+                frameIndex++;
+                
+                if (frameIndex > maxFrames) {
+                    clearInterval(currentAnimation);
+                    currentAnimation = null;
+                    pauseTimeout = setTimeout(() => {
+                        frameIndex = 1;
+                        nextFrame();
+                        currentAnimation = setInterval(nextFrame, 100);
+                    }, 3000);
+                    return;
+                }
+            }
+            
+            nextFrame();
+            currentAnimation = setInterval(nextFrame, 100);
+        }
+
+        connectWebSocket();
+    </script>
+</body>
+</html>
