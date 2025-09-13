@@ -35,22 +35,27 @@
             transition: opacity 1s ease-in-out;
         }
 
-        .status {
+        .fullscreen-btn {
             position: absolute;
             top: 20px;
             right: 20px;
             padding: 10px 15px;
             border-radius: 5px;
+            background-color: #333;
             color: white;
             font-size: 14px;
+            cursor: pointer;
+            border: none;
+            transition: opacity 0.3s ease;
         }
 
-        .connected {
-            background-color: #4CAF50;
+        .fullscreen-btn:hover {
+            background-color: #555;
         }
 
-        .disconnected {
-            background-color: #f44336;
+        .fullscreen-btn.hidden {
+            opacity: 0;
+            pointer-events: none;
         }
     </style>
 </head>
@@ -58,7 +63,7 @@
     <div class="emotion-container">
         <img id="emotionImg" src="images/blink_1.png" alt="当前表情">
     </div>
-    <div id="status" class="status disconnected">未连接</div>
+    <button id="fullscreenBtn" class="fullscreen-btn">全屏</button>
 
     <script>
         const emotionMap = {
@@ -72,15 +77,13 @@
 
         let websocket;
         const emotionImg = document.getElementById('emotionImg');
-        const statusElement = document.getElementById('status');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
 
         function connectWebSocket() {
             websocket = new WebSocket('ws://localhost:10808');
             
             websocket.onopen = function(event) {
                 console.log('WebSocket连接成功');
-                statusElement.textContent = '已连接';
-                statusElement.className = 'status connected';
             };
 
             websocket.onmessage = function(event) {
@@ -96,15 +99,10 @@
 
             websocket.onerror = function(error) {
                 console.error('WebSocket连接错误:', error);
-                statusElement.textContent = '连接错误';
-                statusElement.className = 'status disconnected';
             };
 
             websocket.onclose = function(event) {
                 console.log('WebSocket连接关闭');
-                statusElement.textContent = '连接关闭';
-                statusElement.className = 'status disconnected';
-                
                 setTimeout(connectWebSocket, 3000);
             };
         }
@@ -158,6 +156,29 @@
             nextFrame();
             currentAnimation = setInterval(nextFrame, 100);
         }
+
+        // 全屏功能
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().then(() => {
+                    fullscreenBtn.classList.add('hidden');
+                }).catch(err => {
+                    console.error('无法进入全屏模式:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 监听全屏状态变化
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                fullscreenBtn.classList.remove('hidden');
+            }
+        });
+
+        // 绑定全屏按钮事件
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
 
         connectWebSocket();
     </script>
